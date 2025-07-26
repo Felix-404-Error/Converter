@@ -54,6 +54,15 @@ interface ConversionSettings {
   maintainAspectRatio: boolean;
 }
 
+interface ConversionPreset {
+  id: string;
+  name: string;
+  from: SupportedFormat[];
+  to: SupportedFormat;
+  description: string;
+  icon: string;
+}
+
 const ImageConverter: React.FC = () => {
   const [images, setImages] = useState<ImageFile[]>([]);
   const [convertedImages, setConvertedImages] = useState<ConvertedImage[]>([]);
@@ -65,6 +74,74 @@ const ImageConverter: React.FC = () => {
     quality: 90,
     maintainAspectRatio: true,
   });
+
+  // Conversion presets
+  const conversionPresets: ConversionPreset[] = [
+    {
+      id: 'png-to-jpg',
+      name: 'PNG → JPG',
+      from: ['png'],
+      to: 'jpg',
+      description: 'Convert PNG to JPG with compression',
+      icon: '📷'
+    },
+    {
+      id: 'jpg-to-png',
+      name: 'JPG → PNG',
+      from: ['jpg', 'jpeg'],
+      to: 'png',
+      description: 'Convert JPG to PNG with transparency',
+      icon: '🖼️'
+    },
+    {
+      id: 'png-to-webp',
+      name: 'PNG → WebP',
+      from: ['png'],
+      to: 'webp',
+      description: 'Convert PNG to modern WebP format',
+      icon: '🚀'
+    },
+    {
+      id: 'jpg-to-webp',
+      name: 'JPG → WebP',
+      from: ['jpg', 'jpeg'],
+      to: 'webp',
+      description: 'Convert JPG to WebP for better compression',
+      icon: '⚡'
+    },
+    {
+      id: 'bmp-to-jpg',
+      name: 'BMP → JPG',
+      from: ['bmp'],
+      to: 'jpg',
+      description: 'Convert BMP to compressed JPG',
+      icon: '📂'
+    },
+    {
+      id: 'bmp-to-png',
+      name: 'BMP → PNG',
+      from: ['bmp'],
+      to: 'png',
+      description: 'Convert BMP to PNG format',
+      icon: '🔄'
+    },
+    {
+      id: 'gif-to-jpg',
+      name: 'GIF → JPG',
+      from: ['gif'],
+      to: 'jpg',
+      description: 'Extract first frame of GIF to JPG',
+      icon: '🎬'
+    },
+    {
+      id: 'gif-to-png',
+      name: 'GIF → PNG',
+      from: ['gif'],
+      to: 'png',
+      description: 'Extract first frame of GIF to PNG',
+      icon: '🎭'
+    }
+  ];
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dropZoneRef = useRef<HTMLDivElement>(null);
@@ -293,6 +370,62 @@ const ImageConverter: React.FC = () => {
     }
   };
 
+  // Quick conversion using presets
+  const handleQuickConvert = async (preset: ConversionPreset) => {
+    // Filter images that match the preset's source formats
+    const compatibleImages = images.filter(img => 
+      preset.from.includes(img.originalFormat)
+    );
+
+    if (compatibleImages.length === 0) {
+      toast({
+        title: "No Compatible Images",
+        description: `No ${preset.from.join('/')} images found for ${preset.name} conversion.`,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Set the target format and convert
+    const newSettings = { ...settings, format: preset.to };
+    setSettings(newSettings);
+
+    setIsConverting(true);
+    setProgress(0);
+    setConvertedImages([]);
+
+    const newConvertedImages: ConvertedImage[] = [];
+
+    try {
+      for (let i = 0; i < compatibleImages.length; i++) {
+        const convertedImage = await convertImage(compatibleImages[i], newSettings);
+        newConvertedImages.push(convertedImage);
+        setProgress(((i + 1) / compatibleImages.length) * 100);
+      }
+
+      setConvertedImages(newConvertedImages);
+      
+      toast({
+        title: `${preset.icon} Conversion Complete!`,
+        description: `Successfully converted ${newConvertedImages.length} image(s) using ${preset.name}.`,
+      });
+
+    } catch (error) {
+      toast({
+        title: "Conversion Failed",
+        description: error instanceof Error ? error.message : "An unknown error occurred",
+        variant: "destructive",
+      });
+    } finally {
+      setIsConverting(false);
+    }
+  };
+
+  // Get compatible images count for a preset
+  const getCompatibleImagesCount = (preset: ConversionPreset): number => {
+    return images.filter(img => preset.from.includes(img.originalFormat)).length;
+  };
+
   // Download single image
   const downloadImage = (convertedImage: ConvertedImage) => {
     const url = URL.createObjectURL(convertedImage.blob);
@@ -462,6 +595,44 @@ const ImageConverter: React.FC = () => {
                   </div>
                 </div>
               )}
+
+              {/* Quick Conversion Presets */}
+              {images.length > 0 && (
+                <div className="space-y-4">
+                  <h3 className="font-medium">Quick Conversions</h3>
+                  <div className="grid grid-cols-2 gap-3">
+                    {conversionPresets.map((preset) => {
+                      const compatibleCount = getCompatibleImagesCount(preset);
+                      const isDisabled = compatibleCount === 0 || isConverting;
+                      
+                      return (
+                        <Button
+                          key={preset.id}
+                          onClick={() => handleQuickConvert(preset)}
+                          disabled={isDisabled}
+                          variant={isDisabled ? "outline" : "default"}
+                          size="sm"
+                          className="h-auto p-3 flex-col gap-1 hover:scale-105 transition-transform"
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className="text-base">{preset.icon}</span>
+                            <span className="font-medium text-xs">{preset.name}</span>
+                          </div>
+                          <div className="text-xs text-muted-foreground text-center">
+                            {compatibleCount > 0 
+                              ? `${compatibleCount} compatible` 
+                              : "No compatible images"
+                            }
+                          </div>
+                        </Button>
+                      );
+                    })}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Quick presets will automatically convert only compatible image formats.
+                  </p>
+                </div>
+              )}
             </div>
           </Card>
 
@@ -550,6 +721,27 @@ const ImageConverter: React.FC = () => {
             </div>
           </Card>
         </div>
+
+        {/* Quick Conversion Guide */}
+        {images.length === 0 && (
+          <Card className="p-6 bg-gradient-card shadow-card border-border/50">
+            <div className="space-y-4">
+              <h2 className="text-xl font-semibold flex items-center gap-2">
+                <Zap className="h-5 w-5 text-primary" />
+                Supported Conversions
+              </h2>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                {conversionPresets.map((preset) => (
+                  <div key={preset.id} className="text-center p-4 rounded-lg bg-background/50 border border-border/50">
+                    <div className="text-2xl mb-2">{preset.icon}</div>
+                    <div className="font-medium text-sm mb-1">{preset.name}</div>
+                    <div className="text-xs text-muted-foreground">{preset.description}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </Card>
+        )}
 
         {/* Converted Images */}
         {convertedImages.length > 0 && (
